@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint-and-test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # ── Python linting (placeholder) ───────────────────────────────────────
+      - name: Install Python lint dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff black
+
+      - name: Lint Python code
+        run: |
+          echo "Running Python linter (ruff)..."
+          # Lint any Python files that exist; pass if none found
+          if find . -name "*.py" -not -path "./.git/*" -not -path "./.venv/*" | grep -q .; then
+            ruff check .
+          else
+            echo "No Python files found — skipping lint."
+          fi
+
+      - name: Check Python formatting (black)
+        run: |
+          echo "Checking Python formatting (black)..."
+          if find . -name "*.py" -not -path "./.git/*" -not -path "./.venv/*" | grep -q .; then
+            black --check .
+          else
+            echo "No Python files found — skipping format check."
+          fi
+
+      # ── Python tests (placeholder) ─────────────────────────────────────────
+      - name: Install Python test dependencies
+        run: |
+          pip install pytest
+
+      - name: Run Python tests
+        run: |
+          echo "Running Python tests (pytest)..."
+          if find . -name "test_*.py" -o -name "*_test.py" | grep -q .; then
+            pytest
+          else
+            echo "No Python tests found — skipping."
+          fi
+
+      # ── Node.js linting & tests (placeholder) ─────────────────────────────
+      - name: Install Node.js dependencies
+        run: |
+          echo "Checking for Node.js projects..."
+          if find . -name "package.json" -not -path "./.git/*" -not -path "*/node_modules/*" | grep -q .; then
+            echo "Found package.json — installing dependencies..."
+            # Install deps for each package.json found at project root level
+            find . -maxdepth 3 -name "package.json" -not -path "*/node_modules/*" \
+              -exec sh -c 'cd "$(dirname "{}")" && npm ci --if-present' \;
+          else
+            echo "No Node.js projects found — skipping."
+          fi
+
+      - name: Run Node.js lint & tests
+        run: |
+          echo "Running Node.js lint and tests..."
+          if find . -name "package.json" -not -path "./.git/*" -not -path "*/node_modules/*" | grep -q .; then
+            find . -maxdepth 3 -name "package.json" -not -path "*/node_modules/*" \
+              -exec sh -c 'cd "$(dirname "{}")" && npm run lint --if-present && npm test --if-present' \;
+          else
+            echo "No Node.js projects found — skipping."
+          fi
