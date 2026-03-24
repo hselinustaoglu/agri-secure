@@ -1,17 +1,18 @@
 version: "3.9"
+# Copy .env.example to .env and set POSTGRES_PASSWORD before running.
 services:
   db:
     image: timescale/timescaledb-ha:pg16-latest
     environment:
-      POSTGRES_DB: agrisecure
-      POSTGRES_USER: agrisecure
-      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: ${POSTGRES_DB:-agrisecure}
+      POSTGRES_USER: ${POSTGRES_USER:-agrisecure}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U agrisecure -d agrisecure"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agrisecure} -d ${POSTGRES_DB:-agrisecure}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -31,7 +32,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://agrisecure:changeme@db:5432/agrisecure
+      DATABASE_URL: postgresql://${POSTGRES_USER:-agrisecure}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-agrisecure}
       REDIS_URL: redis://redis:6379/0
     depends_on:
       db:
