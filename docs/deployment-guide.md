@@ -1,109 +1,198 @@
-# Deployment Guide
+# Deployment Guide — $0 Stack (Supabase + Upstash)
 
-## Local Development with Docker Compose
+AgriSecure runs entirely on **free tiers** with no monthly infrastructure cost.
 
-### Prerequisites
-- Docker >= 24.0
-- Docker Compose >= 2.0
-
-### Steps
-
-1. **Clone the repository**
-   ```bash
-   git clone <repo-url>
-   cd agri-secure
-   ```
-
-2. **Configure environment**
-   ```bash
-   cp .env.example .env
-   # Edit .env as needed
-   ```
-
-3. **Start services**
-   ```bash
-   docker-compose up -d
-   ```
-
-4. **Run database migrations**
-   ```bash
-   docker-compose exec api alembic upgrade head
-   ```
-
-5. **Seed initial data**
-   ```bash
-   docker-compose exec api python data/seeds/seed.py
-   ```
-
-6. **Verify the API**
-   ```bash
-   curl http://localhost:8000/health
-   curl http://localhost:8000/docs
-   ```
+| Component | Service | Cost |
+|---|---|---|
+| PostgreSQL + PostGIS | Supabase (free tier) | $0 |
+| Redis cache | Upstash (free tier) | $0 |
+| API / local dev | Docker Compose | $0 |
+| ETL automation | GitHub Actions | $0 |
+| Frontend (future) | Vercel (free tier) | $0 |
+| **Total** | | **$0/month** |
 
 ---
 
-## Kubernetes Deployment (MicroK8s)
+## Prerequisites
 
-### Prerequisites
-- Ubuntu 20.04+ server
-- `sudo` access
-
-### Automated Setup
+- **Mac/Linux**: Homebrew, Python 3.11+, Docker Desktop
+- **Git** (for cloning the repo)
 
 ```bash
-chmod +x infra/scripts/setup-microk8s.sh
-./infra/scripts/setup-microk8s.sh
+# Mac — install Python 3.11
+brew install python@3.11
+
+# Verify
+python3 --version   # 3.11.x
+docker --version    # 24.x+
 ```
-
-### Manual Setup
-
-1. **Install MicroK8s**
-   ```bash
-   sudo snap install microk8s --classic --channel=1.29/stable
-   sudo usermod -aG microk8s $USER
-   microk8s status --wait-ready
-   microk8s enable dns storage ingress
-   ```
-
-2. **Apply manifests**
-   ```bash
-   kubectl apply -f infra/k8s/namespace.yaml
-   kubectl apply -f infra/k8s/postgres/
-   kubectl apply -f infra/k8s/redis/
-   kubectl apply -f infra/k8s/api/
-   kubectl apply -f infra/k8s/etl/
-   ```
-
-3. **Run migrations**
-   ```bash
-   kubectl exec -it deploy/agrisecure-api -n agri-secure -- alembic upgrade head
-   ```
-
-4. **Seed data**
-   ```bash
-   kubectl exec -it deploy/agrisecure-api -n agri-secure -- python data/seeds/seed.py
-   ```
-
-5. **Verify**
-   ```bash
-   kubectl get all -n agri-secure
-   curl http://agrisecure.local/health
-   ```
 
 ---
 
-## GitHub Actions
+## 1. Supabase Setup (Free PostgreSQL + PostGIS)
 
-Configure the following repository secrets for automated data ingestion:
+1. **Sign up** at [supabase.com](https://supabase.com) — free, no credit card.
+2. **Create a project** — choose a region close to you.
+3. **Enable PostGIS**:
+   - Go to **SQL Editor** in your project dashboard.
+   - Run: `CREATE EXTENSION IF NOT EXISTS postgis;`
+4. **Get credentials** from **Settings → Database**:
+   - **Connection string** (Transaction Pooler, port 6543) → your `DATABASE_URL`
+   - **Project URL** → `SUPABASE_URL`
+   - **API keys** → `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_KEY`
+
+---
+
+## 2. Upstash Setup (Free Serverless Redis)
+
+1. **Sign up** at [upstash.com](https://upstash.com) — free tier, no credit card.
+2. **Create a Redis database** — select the region closest to you.
+3. Copy the **Redis connection string** (format: `redis://default:token@host:6379`).
+
+---
+
+## 3. Clone & Configure
+
+```bash
+git clone https://github.com/hselinustaoglu/agri-secure.git
+cd agri-secure
+
+# Copy and fill in your credentials
+cp .env.example .env
+# Edit .env — replace placeholders with your Supabase and Upstash values
+```
+
+Key variables to set in `.env`:
+
+```env
+DATABASE_URL=postgresql://postgres.[your-ref]:[your-password]@aws-0-[region].pooler.supabase.com:6543/postgres
+SUPABASE_URL=https://[your-ref].supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_KEY=your-service-role-key
+REDIS_URL=redis://default:[your-token]@[your-redis].upstash.io:6379
+```
+
+---
+
+## 4. Run Alembic Migrations Against Supabase
+
+```bash
+cd services/api
+pip install -r requirements.txt
+alembic upgrade head
+```
+
+This creates all tables in your Supabase project.
+
+---
+
+## 5. Load Seed Data
+
+```bash
+python data/seeds/seed.py
+```
+
+Seeds reference data: regions, crops, data sources.
+
+---
+
+## 6. Start FastAPI Locally
+
+```bash
+# From the repo root
+uvicorn services.api.app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Visit http://localhost:8000/docs for the interactive API docs.
+
+---
+
+## 7. Test External API Queries
+
+```bash
+# Weather forecast (queries Open-Meteo, cached 1h in Upstash)
+curl "http://localhost:8000/api/v1/external/weather?lat=-1.29&lon=36.82"
+
+# Food prices (queries World Bank + WFP, cached 24h)
+curl "http://localhost:8000/api/v1/external/prices?country=KEN&crop=wheat"
+
+# Food security (queries FEWS NET + FAOSTAT, cached 7 days)
+curl "http://localhost:8000/api/v1/external/food-security?country=KEN"
+
+# Rainfall metadata (CHIRPS, cached 24h)
+curl "http://localhost:8000/api/v1/external/rainfall?country=KEN&year=2025&month=3"
+
+# Risk datasets (HeiGIT via HDX, cached 7 days)
+curl "http://localhost:8000/api/v1/external/risk?country=MW"
+
+# Cache stats
+curl "http://localhost:8000/api/v1/external/cache/status"
+```
+
+---
+
+## 8. Docker Compose (Local Dev with Local Redis)
+
+For offline development, use Docker Compose which spins up a local Redis:
+
+```bash
+# Copy and configure .env
+cp .env.example .env
+# Set DATABASE_URL to your Supabase connection string
+# REDIS_URL defaults to redis://redis:6379/0 (local container)
+
+docker-compose up -d
+
+# Run migrations (against Supabase)
+docker-compose exec api alembic upgrade head
+
+# Seed data
+docker-compose exec api python data/seeds/seed.py
+```
+
+To use a fully local PostgreSQL instead of Supabase (offline only):
+- Uncomment the `db:` service block in `docker-compose.yml`
+- Update `DATABASE_URL` in `.env` to `postgresql://agrisecure:password@db:5432/agrisecure`
+
+---
+
+## 9. GitHub Actions — Cache Warming
+
+Set the following **repository secrets** in GitHub:
 
 | Secret | Description |
-|--------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `REDIS_URL` | Redis connection string |
+|---|---|
+| `DATABASE_URL` | Supabase PostgreSQL connection string |
+| `REDIS_URL` | Upstash Redis connection string |
+
+Optionally set **repository variables** (not secrets):
+
+| Variable | Default | Description |
+|---|---|---|
+| `TARGET_COUNTRIES` | `KEN,ETH,NGA` | ISO3 country codes |
+| `WEATHER_LOCATIONS` | Kenya/Ethiopia/Nigeria coords | `lat,lon` pairs |
 
 Pipelines run on schedule:
-- **Daily (6am UTC)**: Open-Meteo weather
-- **Weekly (Monday 3am)**: FEWS NET IPC data
-- **Monthly (1st 2am)**: World Bank RTFP, WFP, CHIRPS
-- **Quarterly (1st of Jan/Apr/Jul/Oct 2am)**: FAOSTAT, HeiGIT Risk, HeiGIT Accessibility
+
+| Schedule | Job | What it warms |
+|---|---|---|
+| Daily (6am UTC) | `daily-weather` | Open-Meteo weather cache |
+| Weekly (Mon 3am) | `weekly-food-security` | FEWS NET IPC cache |
+| Monthly (1st 2am) | `monthly-price-snapshot` | World Bank, WFP, CHIRPS cache |
+| Quarterly (Jan/Apr/Jul/Oct) | `quarterly-indicators` | FAOSTAT, HeiGIT cache |
+
+You can also trigger any job manually via the **Actions → Run workflow** button.
+
+---
+
+## 10. Optional: MicroK8s on Mac (Kubernetes Learning)
+
+See `infra/k8s/README.md` for step-by-step instructions to deploy AgriSecure on
+MicroK8s locally for Kubernetes learning.  This is **not required for production**.
+
+---
+
+## 11. Optional: Vercel Deployment (Frontend — future)
+
+The web dashboard (`apps/web-dashboard/`) will be deployable to Vercel free tier.
+Details will be added when the dashboard is implemented.

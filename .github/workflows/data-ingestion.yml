@@ -1,18 +1,29 @@
-name: Data Ingestion Pipelines
+name: Data Ingestion — Cache Warming
 
 on:
   schedule:
+    # Daily: warm weather cache (6am UTC)
     - cron: "0 6 * * *"
+    # Weekly: warm food security cache (Monday 3am UTC)
     - cron: "0 3 * * 1"
+    # Monthly: warm price snapshot cache (1st of month 2am UTC)
     - cron: "0 2 1 * *"
+    # Quarterly: warm food security indicators cache
     - cron: "0 2 1 1,4,7,10 *"
+  # Allow on-demand cache warming from GitHub Actions UI
   workflow_dispatch:
+    inputs:
+      target:
+        description: "Pipeline to run (all | weather | food-security | prices | indicators)"
+        required: false
+        default: "all"
 
 permissions:
   contents: read
 
 jobs:
   daily-weather:
+    name: Warm Weather Cache (Open-Meteo)
     if: github.event.schedule == '0 6 * * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
@@ -22,13 +33,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -r data/pipelines/requirements.txt
-      - run: python data/pipelines/open_meteo.py
+      - name: Install dependencies
+        run: pip install -r data/pipelines/requirements.txt
+      - name: Warm Open-Meteo cache
+        run: python data/pipelines/open_meteo.py
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
+          WEATHER_LOCATIONS: ${{ vars.WEATHER_LOCATIONS || '-1.286389,36.817223;9.145000,40.489673;9.082000,8.675277' }}
+          CACHE_TTL_WEATHER: "3600"
 
-  weekly-fews:
+  weekly-food-security:
+    name: Warm Food Security Cache (FEWS NET)
     if: github.event.schedule == '0 3 * * 1' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
@@ -38,12 +54,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -r data/pipelines/requirements.txt
-      - run: python data/pipelines/fews_net.py
+      - name: Install dependencies
+        run: pip install -r data/pipelines/requirements.txt
+      - name: Warm FEWS NET cache
+        run: python data/pipelines/fews_net.py
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          TARGET_COUNTRIES: ${{ vars.TARGET_COUNTRIES || 'KEN,ETH,NGA' }}
+          CACHE_TTL_FOOD_SECURITY: "604800"
 
-  monthly-prices:
+  monthly-price-snapshot:
+    name: Warm Price Cache (World Bank + WFP + CHIRPS)
     if: github.event.schedule == '0 2 1 * *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
@@ -53,21 +75,32 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -r data/pipelines/requirements.txt
-      - name: Run World Bank RTFP
+      - name: Install dependencies
+        run: pip install -r data/pipelines/requirements.txt
+      - name: Warm World Bank RTFP cache
         run: python data/pipelines/world_bank_rtfp.py
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      - name: Run WFP Prices
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          TARGET_COUNTRIES: ${{ vars.TARGET_COUNTRIES || 'KEN,ETH,NGA' }}
+          CACHE_TTL_PRICES: "86400"
+      - name: Warm WFP prices cache
         run: python data/pipelines/wfp_prices.py
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      - name: Run CHIRPS
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          TARGET_COUNTRIES: ${{ vars.TARGET_COUNTRIES || 'KEN,ETH,NGA' }}
+          CACHE_TTL_PRICES: "86400"
+      - name: Warm CHIRPS rainfall cache
         run: python data/pipelines/chirps.py
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          TARGET_COUNTRIES: ${{ vars.TARGET_COUNTRIES || 'KEN,ETH,NGA' }}
+          CACHE_TTL_PRICES: "86400"
 
   quarterly-indicators:
+    name: Warm Indicators Cache (FAOSTAT + HeiGIT)
     if: github.event.schedule == '0 2 1 1,4,7,10 *' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
@@ -77,16 +110,24 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -r data/pipelines/requirements.txt
-      - name: Run FAOSTAT
+      - name: Install dependencies
+        run: pip install -r data/pipelines/requirements.txt
+      - name: Warm FAOSTAT cache
         run: python data/pipelines/faostat.py
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      - name: Run HeiGIT Risk
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          TARGET_COUNTRIES: ${{ vars.TARGET_COUNTRIES || 'KEN,ETH,NGA' }}
+          CACHE_TTL_PRICES: "86400"
+      - name: Warm HeiGIT Risk cache
         run: python data/pipelines/heigit_risk.py
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      - name: Run HeiGIT Accessibility
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          CACHE_TTL_FOOD_SECURITY: "604800"
+      - name: Warm HeiGIT Accessibility cache
         run: python data/pipelines/heigit_accessibility.py
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          CACHE_TTL_FOOD_SECURITY: "604800"

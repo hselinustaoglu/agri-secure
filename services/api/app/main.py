@@ -10,6 +10,7 @@ from .routers import (
     weather_router,
 )
 from .routers.alerts import router_notifications, router_rules
+from .routers.external_data import router as external_data_router
 from .routers.farmers import router_crops, router_farms
 from .routers.markets import router_price_alerts, router_prices
 from .routers.regions import router_zones
@@ -42,6 +43,7 @@ app.include_router(food_security_router, prefix=PREFIX)
 app.include_router(ingestion_router, prefix=PREFIX)
 app.include_router(router_logs, prefix=PREFIX)
 app.include_router(router_schedules, prefix=PREFIX)
+app.include_router(external_data_router, prefix=PREFIX)
 
 
 @app.get("/health")

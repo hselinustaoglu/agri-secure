@@ -2,139 +2,140 @@
 
 ## 1. Overview
 
-AgriSecure is a modular, microservices-based platform that integrates multiple open-source agricultural and food-security tools into a unified system. The diagram below shows the high-level architecture and data flow.
+AgriSecure is a **query-first** food security and agriculture support platform.
+External data (weather, prices, food security) is **queried on demand** from free
+public APIs and cached temporarily in Redis.  Only our own data (farmers, farms,
+alerts) is stored permanently in Supabase.
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                           EXTERNAL DATA SOURCES                              │
-│                                                                              │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────┐  ┌──────────┐  ┌──────────┐ │
-│  │ FEWS NET │  │  CHIRPS  │  │ Market APIs  │  │   FAO    │  │   ODK /  │ │
-│  │(warnings)│  │(rainfall)│  │(price feeds) │  │(open data│  │KoBoTool. │ │
-│  └────┬─────┘  └────┬─────┘  └──────┬───────┘  └────┬─────┘  └────┬─────┘ │
-└───────┼─────────────┼───────────────┼───────────────┼──────────────┼───────┘
-        │             │               │               │              │
-        ▼             ▼               ▼               ▼              ▼
-┌───────────────────────────────────────────────────────────────────────────────┐
-│                         DATA PIPELINES  (data/pipelines/)                     │
-│              ETL jobs — ingest, normalise, and load into the database         │
-└──────────────────────────────────┬────────────────────────────────────────────┘
-                                   │
-                                   ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                     DATABASE LAYER                                           │
-│              PostgreSQL + PostGIS (spatial data support)                     │
-│                                                                              │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐  ┌────────────────┐   │
-│  │   Farmers   │  │Market Prices │  │Weather/Alert│  │ Vouchers/Input │   │
-│  │  (profiles) │  │  (history)   │  │  (timeseries│  │  (subsidy log) │   │
-│  └─────────────┘  └──────────────┘  └─────────────┘  └────────────────┘   │
-└──────────────────────────────────┬───────────────────────────────────────────┘
-                                   │
-                                   ▼
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                      BACKEND MICROSERVICES  (services/)                       │
-│                                                                              │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐          │
-│  │  farmer-service  │  │ advisory-service │  │  market-service  │          │
-│  │  (registration,  │  │ (tip generation, │  │  (price CRUD,    │          │
-│  │   profiles)      │  │  scheduling)     │  │   aggregation)   │          │
-│  └──────────────────┘  └──────────────────┘  └──────────────────┘          │
-│                                                                              │
-│  ┌──────────────────┐  ┌──────────────────┐                                │
-│  │  voucher-service │  │  alert-service   │                                │
-│  │  (subsidy track- │  │  (rule engine,   │                                │
-│  │   ing, issuance) │  │   notifications) │                                │
-│  └──────────────────┘  └──────────────────┘                                │
-└──────┬────────────────────────────────────────────────────────┬─────────────┘
-       │                                                        │
-       ▼                                                        ▼
-┌─────────────────────────┐                    ┌───────────────────────────────┐
-│   MESSAGING LAYER       │                    │       FRONTEND / APPS         │
-│   (apps/sms-gateway/)   │                    │                               │
-│                         │                    │  ┌─────────────────────────┐ │
-│  Twilio / Africa's      │                    │  │   web-dashboard/        │ │
-│  Talking                │                    │  │   (React / Next.js)     │ │
-│  ──────────────────     │                    │  │   Analytics, maps,      │ │
-│  SMS ◀──▶ Farmer        │                    │  │   agent portal          │ │
-│  WhatsApp ◀──▶ Farmer   │                    │  └─────────────────────────┘ │
-│                         │                    │                               │
-└─────────────────────────┘                    │  ┌─────────────────────────┐ │
-                                               │  │   mobile-app/           │ │
-                                               │  │   (React Native)        │ │
-                                               │  │   Farmer-facing mobile  │ │
-                                               │  └─────────────────────────┘ │
-                                               └───────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                       EXTERNAL DATA SOURCES (free)                       │
+│                                                                           │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
+│  │  FEWS NET│  │  CHIRPS  │  │  WFP VAM │  │ FAOSTAT  │  │Open-Meteo│  │
+│  │ (IPC)    │  │(rainfall)│  │ (prices) │  │(crop data│  │(weather) │  │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  │
+│       │             │             │              │              │         │
+│  ┌────┴─────┐  ┌────┴─────┐                                             │
+│  │World Bank│  │ HeiGIT   │                                             │
+│  │  RTFP    │  │  (HDX)   │                                             │
+│  └──────────┘  └──────────┘                                             │
+└───────────────────────────┬─────────────────────────────────────────────┘
+                             │ Query on demand (HTTPS)
+                             ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    FastAPI  (services/api/)                               │
+│                                                                           │
+│  GET /api/v1/external/weather      → OpenMeteoClient                     │
+│  GET /api/v1/external/prices       → WorldBankClient + WFPClient         │
+│  GET /api/v1/external/food-security→ FEWSNetClient + FAOSTATClient       │
+│  GET /api/v1/external/rainfall     → CHIRPSClient                        │
+│  GET /api/v1/external/risk         → HeiGITClient                        │
+│  GET /api/v1/external/cache/status → RedisCache.stats()                  │
+│                                                                           │
+│  GET /api/v1/farmers  /farms  /markets  /alerts  /regions  /...          │
+└────────────┬──────────────────────────────────────────────┬──────────────┘
+             │                                              │
+             ▼                                              ▼
+┌────────────────────────────┐           ┌─────────────────────────────────┐
+│  Supabase (free tier)       │           │  Upstash Redis (free tier)       │
+│  PostgreSQL + PostGIS       │           │  Serverless cache                │
+│                             │           │                                   │
+│  farmers / farms            │           │  open_meteo:lat:lon  (1h TTL)   │
+│  alerts / regions           │           │  wfp:prices:KEN:...  (24h TTL)  │
+│  data_sources               │           │  fews_net:ipc:KEN:...  (7d TTL) │
+│  ingestion_logs             │           │  chirps:2025:03:KEN  (24h TTL)  │
+└────────────────────────────┘           └─────────────────────────────────┘
 ```
 
 ---
 
-## 2. Module Descriptions
+## 2. $0/Month Cost Breakdown
 
-### 2.1 Farmer Service (`services/farmer-service/`)
-Manages farmer registration and profiles. Stores personal details, farm location (PostGIS point), crops grown, preferred language, and contact number. Exposes REST endpoints consumed by the web dashboard and mobile app.
-
-### 2.2 Advisory Service (`services/advisory-service/`)
-Generates and schedules agronomy advisories based on farmer profile, current weather data, and seasonal calendar. Pushes messages to the SMS gateway for delivery. Integrates with FarmVibes.AI for AI-enhanced recommendations.
-
-### 2.3 Market Service (`services/market-service/`)
-Collects, stores, and serves commodity price data. Supports both manual agent entry and automated ingestion from public price APIs. Provides historical trends and alerts for significant price movements.
-
-### 2.4 Voucher Service (`services/voucher-service/`)
-Tracks the issuance and redemption of agricultural input subsidies (seeds, fertiliser, tools). Provides audit trail for government programs and NGOs.
-
-### 2.5 Alert Service (`services/alert-service/`)
-Implements a rule engine that evaluates incoming weather and food-security data against configurable thresholds. Triggers multi-channel notifications (SMS, WhatsApp, email, dashboard alerts) when thresholds are breached.
-
-### 2.6 SMS Gateway (`apps/sms-gateway/`)
-Bridges the backend services and farmer communication channels. Uses Twilio and/or Africa's Talking APIs to send and receive SMS and WhatsApp messages. Handles delivery receipts and inbound message routing.
-
-### 2.7 Web Dashboard (`apps/web-dashboard/`)
-React/Next.js application for extension agents, programme managers, and policymakers. Displays interactive maps (Leaflet + PostGIS), farmer statistics, market price charts, food security indicators, and voucher reports.
-
-### 2.8 Mobile App (`apps/mobile-app/`)
-React Native application targeting smallholder farmers. Provides registration, advisory message history, market price look-up, and offline-first access to key data.
+| Component | Service | Free Tier Limits | Cost |
+|---|---|---|---|
+| **PostgreSQL + PostGIS** | Supabase | 500 MB DB, 50K MAU | $0 |
+| **Redis cache** | Upstash | 10K req/day, 256 MB | $0 |
+| **API hosting** | Docker Compose (local) | N/A | $0 |
+| **ETL automation** | GitHub Actions | 2,000 min/month | $0 |
+| **Frontend** | Vercel (future) | 100 GB bandwidth | $0 |
+| **Total** | | | **$0/month** |
 
 ---
 
-## 3. External Data Source Integrations
+## 3. Query-First Pattern
 
-| Source | Integration Method | Data Used |
-|--------|-------------------|-----------|
-| **FEWS NET** | REST/GeoJSON API poll (ETL pipeline) | Food security phase classifications, livelihood zones |
-| **CHIRPS** | File download + raster ingestion (ETL pipeline) | Daily/monthly rainfall estimates |
-| **Market APIs** | REST API poll or webhook (ETL pipeline) | Commodity prices by region |
-| **FAO** | REST API / CSV download | Crop calendars, food consumption reference data |
-| **ODK / KoBoToolbox** | REST API + webhook | Field agent survey submissions |
+All external data follows this flow:
 
-All integrations are implemented as scheduled ETL jobs under `data/pipelines/` and write normalised data to the PostgreSQL database.
+```
+1. Client requests /api/v1/external/weather?lat=-1.29&lon=36.82
+2. FastAPI checks Redis cache (key: open_meteo:-1.29:36.82:...)
+3a. Cache HIT  → Return cached JSON immediately (< 5ms)
+3b. Cache MISS → Query Open-Meteo API → Cache result → Return JSON
+```
 
----
-
-## 4. Database Layer
-
-- **Engine**: PostgreSQL 15+ with the PostGIS extension for spatial data.
-- **Spatial features**: Farm locations stored as `GEOMETRY(Point, 4326)`, enabling proximity queries, choropleth maps, and regional aggregations.
-- **Schema per service**: Each microservice owns its schema/tables to maintain loose coupling.
-- **Migrations**: Managed via Alembic (Python services) to support versioned schema changes.
-- **Seed data**: Reference tables (crop types, administrative regions, languages) are seeded from `data/seeds/`.
+Benefits:
+- **Always current**: data is never stale beyond the TTL
+- **$0 storage cost**: no raster files, no bulk CSVs stored
+- **Graceful degradation**: if an API is down, the last cached value is served
 
 ---
 
-## 5. Messaging Layer
+## 4. Module Descriptions
 
-- **Outbound**: Backend services enqueue messages to the SMS gateway, which dispatches them via Twilio or Africa's Talking.
-- **Inbound**: Farmer replies are received by the gateway webhook, parsed, and routed to the advisory service for two-way conversation support.
-- **Multi-channel**: SMS (universal), WhatsApp Business API (smartphones), and in-app push notifications (mobile app).
-- **Multilingual**: Message templates stored per language; the advisory service selects the correct template based on farmer preference.
+### 4.1 External API Clients (`services/api/app/external/`)
+
+Thin async HTTP clients (httpx) for each data source.  Each client:
+- Checks Redis cache before making an HTTP request
+- Caches the response with a source-specific TTL
+- Raises `httpx.HTTPStatusError` on API errors (handled by router)
+
+### 4.2 FastAPI (`services/api/`)
+REST API exposing both our own data (farmers, markets, alerts) and proxied
+external data queries.  All external endpoints are under `/api/v1/external/`.
+
+### 4.3 Data Pipelines (`data/pipelines/`)
+GitHub Actions cache-warming scripts.  They query external APIs proactively
+on a schedule and prime the Redis cache so that the first user request is fast.
+They also log query metadata to the Supabase `ingestion_logs` table.
+
+### 4.4 Farmer Service (`services/farmer-service/`) — future
+Manages farmer registration and profiles.
+
+### 4.5 Advisory Service (`services/advisory-service/`) — future
+Generates agronomy advisories based on farmer profile and live weather/price data.
+
+### 4.6 Market Service (`services/market-service/`) — future
+Aggregates and serves commodity price data.
+
+### 4.7 Alert Service (`services/alert-service/`) — future
+Rule engine that evaluates weather and food-security data against thresholds.
 
 ---
 
-## 6. Infrastructure
+## 5. Infrastructure
 
-All infrastructure-as-code lives under `infra/`:
+### Production ($0/month)
+- **Supabase**: PostgreSQL + PostGIS (free tier)
+- **Upstash**: Serverless Redis (free tier)
+- **GitHub Actions**: ETL / cache warming
+- **Vercel** (future): Frontend hosting
 
-- **`infra/terraform/`**: Cloud resource definitions (VPC, compute, managed database, storage buckets) targeting AWS/Azure/GCP.
-- **`infra/docker/`**: Docker Compose configuration for local development, bundling all services, the database, and a message broker.
+### Local Development
+- **Docker Compose**: FastAPI + local Redis container
+- Connect `DATABASE_URL` to Supabase cloud (works offline-first via cache)
 
-CI/CD is provided by GitHub Actions (`.github/workflows/ci.yml`), running linting and tests on every pull request to `main`.
+### Kubernetes Learning (MicroK8s on Mac)
+- See `infra/k8s/README.md` for how to deploy AgriSecure to a local MicroK8s cluster
+- This is for learning Kubernetes concepts only — not required for production
+
+---
+
+## 6. Phase Progression
+
+| Phase | Description | Infrastructure |
+|---|---|---|
+| **MVP** | 2-3 countries, query-first | Supabase free + Upstash free + GitHub Actions |
+| **Growth** | 5-10 countries, higher traffic | Supabase Pro + Upstash Pay-per-request |
+| **Nonprofit credits** | Apply for AWS/GCP/Azure nonprofit credits | Managed K8s + managed DB |
+| **Self-hosted** | Full control, lowest cost at scale | Hetzner/Civo + self-managed PostgreSQL |

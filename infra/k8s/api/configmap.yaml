@@ -4,5 +4,27 @@ metadata:
   name: api-config
   namespace: agri-secure
 data:
-  DATABASE_URL: postgresql://agrisecure:changeme@postgres:5432/agrisecure
-  REDIS_URL: redis://redis:6379/0
+  # === Supabase (Free Tier) ===
+  # Store real credentials in a Kubernetes Secret, NOT here.
+  # Reference them in the Deployment via envFrom/secretRef instead of this ConfigMap.
+  # Example placeholder only — replace with your actual Supabase project details via Secret.
+  SUPABASE_URL: https://REPLACE_WITH_YOUR_REF.supabase.co
+  # === Upstash Redis (Free Tier) ===
+  # Override REDIS_URL via a Kubernetes Secret in production.
+  REDIS_URL: redis://REPLACE_WITH_UPSTASH_URL
+  # === External API base URLs ===
+  OPEN_METEO_BASE_URL: https://api.open-meteo.com/v1
+  FAOSTAT_BASE_URL: https://fenixservices.fao.org/faostat/api/v1
+  WFP_API_BASE_URL: https://api.wfp.org/vam-data-bridges/4.0.0
+  WORLD_BANK_RTFP_URL: https://microdata.worldbank.org/index.php/catalog/4483
+  FEWS_NET_BASE_URL: https://fews.net/api
+  HDX_API_BASE_URL: https://data.humdata.org/api/3
+  # === Cache TTL ===
+  CACHE_TTL_WEATHER: "3600"
+  CACHE_TTL_PRICES: "86400"
+  CACHE_TTL_FOOD_SECURITY: "604800"
+  # === App settings ===
+  DEBUG: "false"
+  LOG_LEVEL: INFO
+  TARGET_COUNTRIES: KEN,ETH,NGA
+  WEATHER_LOCATIONS: "-1.286389,36.817223;9.145000,40.489673;9.082000,8.675277"

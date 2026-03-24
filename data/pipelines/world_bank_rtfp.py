@@ -1,74 +1,58 @@
-"""World Bank Real-Time Food Prices (RTFP) pipeline."""
+"""World Bank Real-Time Food Prices (RTFP) cache-warming pipeline (query-on-demand)."""
 
+import json
 import logging
 import os
-import uuid
 from typing import Any, Dict, List
 
 import httpx
-from sqlalchemy import text
+import redis
 
 from .base import BaseETLPipeline
 
 logger = logging.getLogger(__name__)
 
 CATALOG_URL = "https://microdata.worldbank.org/index.php/api/catalog/4483"
+CACHE_TTL = int(os.getenv("CACHE_TTL_PRICES", "86400"))
 
 
 class WorldBankRTFPPipeline(BaseETLPipeline):
-    """Downloads monthly food price estimates from World Bank RTFP."""
+    """Warms the Redis cache with World Bank RTFP catalog metadata.
+
+    No data is stored in the database — results are cached in Redis.
+    Query metadata is logged to Supabase ``ingestion_logs``.
+    """
 
     def __init__(self, db_url: str) -> None:
         super().__init__(db_url, "World Bank RTFP")
+        self.redis_client = redis.Redis.from_url(
+            os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        )
         self.target_countries = os.getenv("TARGET_COUNTRIES", "KEN,ETH,NGA").split(",")
 
     def extract(self) -> Any:
+        cache_key = "world_bank:catalog:4483"
+        cached = self.redis_client.get(cache_key)
+        if cached:
+            logger.debug("Cache hit for World Bank RTFP catalog")
+            return json.loads(cached)
+
         logger.info("Fetching World Bank RTFP catalog from %s", CATALOG_URL)
         with httpx.Client(timeout=60) as client:
             resp = client.get(CATALOG_URL, params={"format": "json"})
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            self.redis_client.setex(cache_key, CACHE_TTL, json.dumps(data))
+            return data
 
     def transform(self, raw_data: Any) -> List[Dict[str, Any]]:
-        records: List[Dict[str, Any]] = []
+        """Return summary metadata for logging."""
         study = raw_data if isinstance(raw_data, dict) else {}
-        logger.info(
-            "Transforming World Bank RTFP catalog: %s", study.get("id", "unknown")
-        )
-        return records
+        return [{"catalog_id": study.get("id", "4483"), "cached": True}]
 
     def load(self, data: List[Dict[str, Any]]) -> Dict[str, int]:
-        if not data:
-            logger.warning("No RTFP price records to load")
-            return {"rows_processed": 0, "rows_failed": 0}
-        rows_processed = 0
-        rows_failed = 0
-        with self.SessionLocal() as session:
-            for record in data:
-                try:
-                    session.execute(
-                        text(
-                            "INSERT INTO market_prices "
-                            "(id, market_id, crop_id, price, currency, unit, price_date, source) "
-                            "VALUES (:id, :market_id, :crop_id, :price, :currency, :unit, :price_date, 'world_bank') "
-                            "ON CONFLICT DO NOTHING"
-                        ),
-                        {
-                            "id": str(uuid.uuid4()),
-                            "market_id": record.get("market_id"),
-                            "crop_id": record.get("crop_id"),
-                            "price": record.get("price"),
-                            "currency": record.get("currency", "USD"),
-                            "unit": record.get("unit"),
-                            "price_date": record.get("price_date"),
-                        },
-                    )
-                    rows_processed += 1
-                except Exception as exc:
-                    logger.error("Failed to insert RTFP record: %s", exc)
-                    rows_failed += 1
-            session.commit()
-        return {"rows_processed": rows_processed, "rows_failed": rows_failed}
+        """Log cache-warming metadata to Supabase ingestion_logs."""
+        return {"rows_processed": len(data), "rows_failed": 0}
 
 
 if __name__ == "__main__":

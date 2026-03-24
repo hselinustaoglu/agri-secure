@@ -11,6 +11,15 @@ logger = logging.getLogger(__name__)
 
 
 class BaseETLPipeline(abc.ABC):
+    """Base class for query-on-demand ETL pipelines.
+
+    Pipelines no longer bulk-download and store external data.
+    Instead they:
+      1. Query the external API on demand.
+      2. Optionally cache results in Redis with a TTL.
+      3. Log query metadata (what was queried, when, status) to Supabase.
+    """
+
     def __init__(self, db_url: str, data_source_name: str) -> None:
         self.db_url = db_url
         self.data_source_name = data_source_name
@@ -19,24 +28,24 @@ class BaseETLPipeline(abc.ABC):
 
     @abc.abstractmethod
     def extract(self) -> Any:
-        """Extract data from the source."""
+        """Query the external API and return raw data."""
         ...
 
     @abc.abstractmethod
     def transform(self, raw_data: Any) -> Any:
-        """Transform raw data into the target schema."""
+        """Transform raw API response into a loggable summary."""
         ...
 
     @abc.abstractmethod
     def load(self, data: Any) -> Dict[str, int]:
-        """Load transformed data into the database.
+        """Log query metadata to Supabase ingestion_logs.
 
         Returns {"rows_processed": N, "rows_failed": M}.
         """
         ...
 
     def run(self) -> None:
-        """Execute the full ETL pipeline."""
+        """Execute the query-on-demand pipeline and log metadata to Supabase."""
         log_id = self.log_start()
         try:
             raw = self.extract()
