@@ -1,108 +1,71 @@
-"""WFP food prices pipeline."""
+"""WFP food prices cache-warming pipeline (query-on-demand)."""
 
+import json
 import logging
 import os
-import uuid
 from typing import Any, Dict, List
 
 import httpx
-from sqlalchemy import text
+import redis
 
 from .base import BaseETLPipeline
 
 logger = logging.getLogger(__name__)
 
-API_URL = "https://api.hungermapdata.org/api/v2/country/all/marketprice"
+WFP_API_BASE_URL = os.getenv(
+    "WFP_API_BASE_URL", "https://api.wfp.org/vam-data-bridges/4.0.0"
+)
+CACHE_TTL = int(os.getenv("CACHE_TTL_PRICES", "86400"))
 
 
 class WFPPricesPipeline(BaseETLPipeline):
-    """Downloads food prices from WFP HungerMap API."""
+    """Warms the Redis cache with WFP market prices via VAM Data Bridges.
+
+    No data is stored in the database — results are cached in Redis.
+    Query metadata is logged to Supabase ``ingestion_logs``.
+    """
 
     def __init__(self, db_url: str) -> None:
         super().__init__(db_url, "WFP Prices")
+        self.redis_client = redis.Redis.from_url(
+            os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        )
         self.target_countries = os.getenv("TARGET_COUNTRIES", "KEN,ETH,NGA").split(",")
 
     def extract(self) -> Any:
-        logger.info("Fetching WFP market prices from %s", API_URL)
-        with httpx.Client(timeout=60) as client:
-            resp = client.get(API_URL)
-            resp.raise_for_status()
-            return resp.json()
+        results = []
+        for country in self.target_countries:
+            cache_key = f"wfp:prices:{country}:None:1"
+            cached = self.redis_client.get(cache_key)
+            if cached:
+                logger.debug("Cache hit for WFP prices country=%s", country)
+                results.append({"country": country, "cached": True})
+                continue
+            logger.info("Fetching WFP prices for country=%s", country)
+            try:
+                with httpx.Client(timeout=60) as client:
+                    resp = client.get(
+                        f"{WFP_API_BASE_URL}/MarketPrices/PriceMonthly",
+                        params={"CountryCode": country, "page": 1, "format": "json"},
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    self.redis_client.setex(cache_key, CACHE_TTL, json.dumps(data))
+                    results.append({"country": country, "cached": False})
+            except Exception as exc:
+                logger.warning(
+                    "WFP prices unavailable for country=%s: %s", country, exc
+                )
+                results.append({"country": country, "cached": False, "error": str(exc)})
+        return results
 
     def transform(self, raw_data: Any) -> List[Dict[str, Any]]:
-        records: List[Dict[str, Any]] = []
-        items = raw_data if isinstance(raw_data, list) else raw_data.get("data", [])
-        for item in items:
-            country = item.get("country_iso3", "")
-            if country not in self.target_countries:
-                continue
-            for price_entry in item.get("prices", []):
-                records.append(
-                    {
-                        "market_name": item.get("market_name", "Unknown"),
-                        "commodity": price_entry.get("commodity", ""),
-                        "price": price_entry.get("price"),
-                        "currency": price_entry.get("currency", "USD"),
-                        "unit": price_entry.get("unit"),
-                        "price_date": price_entry.get("date"),
-                        "country_code": country,
-                    }
-                )
-        logger.info("Transformed %d WFP price records", len(records))
-        return records
+        return raw_data
 
     def load(self, data: List[Dict[str, Any]]) -> Dict[str, int]:
-        if not data:
-            logger.warning("No WFP price records to load")
-            return {"rows_processed": 0, "rows_failed": 0}
-        rows_processed = 0
-        rows_failed = 0
-        with self.SessionLocal() as session:
-            for record in data:
-                try:
-                    market_row = session.execute(
-                        text(
-                            "SELECT id FROM markets WHERE name = :name "
-                            "AND country_code = :cc LIMIT 1"
-                        ),
-                        {
-                            "name": record["market_name"],
-                            "cc": record["country_code"],
-                        },
-                    ).fetchone()
-                    if not market_row:
-                        rows_failed += 1
-                        continue
-                    crop_row = session.execute(
-                        text("SELECT id FROM crops WHERE name = :name LIMIT 1"),
-                        {"name": record["commodity"]},
-                    ).fetchone()
-                    if not crop_row:
-                        rows_failed += 1
-                        continue
-                    session.execute(
-                        text(
-                            "INSERT INTO market_prices "
-                            "(id, market_id, crop_id, price, currency, unit, price_date, source) "
-                            "VALUES (:id, :market_id, :crop_id, :price, :currency, :unit, :price_date, 'wfp') "
-                            "ON CONFLICT DO NOTHING"
-                        ),
-                        {
-                            "id": str(uuid.uuid4()),
-                            "market_id": str(market_row[0]),
-                            "crop_id": str(crop_row[0]),
-                            "price": record["price"],
-                            "currency": record["currency"],
-                            "unit": record["unit"],
-                            "price_date": record["price_date"],
-                        },
-                    )
-                    rows_processed += 1
-                except Exception as exc:
-                    logger.error("Failed to insert WFP record: %s", exc)
-                    rows_failed += 1
-            session.commit()
-        return {"rows_processed": rows_processed, "rows_failed": rows_failed}
+        """Log cache-warming metadata to Supabase ingestion_logs."""
+        failed = sum(1 for r in data if r.get("error"))
+        return {"rows_processed": len(data) - failed, "rows_failed": failed}
 
 
 if __name__ == "__main__":

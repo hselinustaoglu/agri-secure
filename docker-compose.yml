@@ -1,22 +1,33 @@
 version: "3.9"
-# Copy .env.example to .env and set POSTGRES_PASSWORD before running.
-services:
-  db:
-    image: timescale/timescaledb-ha:pg16-latest
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-agrisecure}
-      POSTGRES_USER: ${POSTGRES_USER:-agrisecure}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agrisecure} -d ${POSTGRES_DB:-agrisecure}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+# Copy .env.example to .env and fill in your Supabase and Upstash credentials.
+#
+# Production uses:
+#   - DATABASE_URL → Supabase PostgreSQL (free tier)
+#   - REDIS_URL    → Upstash Redis (free tier)
+#
+# For offline development / MicroK8s learning, uncomment the 'db' and local
+# redis sections below and set DATABASE_URL / REDIS_URL to the local endpoints.
 
+services:
+  # ── Local PostgreSQL (offline dev / MicroK8s learning only) ──────────────
+  # Uncomment to run a local PostGIS database instead of Supabase.
+  # db:
+  #   image: postgis/postgis:16-3.4-alpine
+  #   environment:
+  #     POSTGRES_DB: ${POSTGRES_DB:-agrisecure}
+  #     POSTGRES_USER: ${POSTGRES_USER:-agrisecure}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agrisecure} -d ${POSTGRES_DB:-agrisecure}"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+
+  # ── Local Redis (alternative to Upstash for offline dev) ─────────────────
   redis:
     image: redis:7-alpine
     ports:
@@ -32,16 +43,35 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-agrisecure}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-agrisecure}
-      REDIS_URL: redis://redis:6379/0
+      # Point to Supabase in production; override with local values for dev
+      DATABASE_URL: ${DATABASE_URL}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:-}
+      SUPABASE_SERVICE_KEY: ${SUPABASE_SERVICE_KEY:-}
+      # Use local Redis by default; override with Upstash URL in production
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      # External API base URLs
+      OPEN_METEO_BASE_URL: ${OPEN_METEO_BASE_URL:-https://api.open-meteo.com/v1}
+      FAOSTAT_BASE_URL: ${FAOSTAT_BASE_URL:-https://fenixservices.fao.org/faostat/api/v1}
+      WFP_API_BASE_URL: ${WFP_API_BASE_URL:-https://api.wfp.org/vam-data-bridges/4.0.0}
+      WORLD_BANK_RTFP_URL: ${WORLD_BANK_RTFP_URL:-https://microdata.worldbank.org/index.php/catalog/4483}
+      FEWS_NET_BASE_URL: ${FEWS_NET_BASE_URL:-https://fews.net/api}
+      HDX_API_BASE_URL: ${HDX_API_BASE_URL:-https://data.humdata.org/api/3}
+      # Cache TTLs
+      CACHE_TTL_WEATHER: ${CACHE_TTL_WEATHER:-3600}
+      CACHE_TTL_PRICES: ${CACHE_TTL_PRICES:-86400}
+      CACHE_TTL_FOOD_SECURITY: ${CACHE_TTL_FOOD_SECURITY:-604800}
+      # App settings
+      DEBUG: ${DEBUG:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TARGET_COUNTRIES: ${TARGET_COUNTRIES:-KEN,ETH,NGA}
+      WEATHER_LOCATIONS: ${WEATHER_LOCATIONS:--1.286389,36.817223;9.145000,40.489673;9.082000,8.675277}
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
       - ./services/api:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-volumes:
-  postgres_data:
+# volumes:
+#   postgres_data:

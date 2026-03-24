@@ -1,28 +1,42 @@
-"""HeiGIT accessibility data pipeline from HDX."""
+"""HeiGIT accessibility data cache-warming pipeline (query-on-demand)."""
 
+import json
 import logging
 import os
-import uuid
 from typing import Any, Dict, List
 
 import httpx
-from sqlalchemy import text
+import redis
 
 from .base import BaseETLPipeline
 
 logger = logging.getLogger(__name__)
 
 HDX_SEARCH_URL = "https://data.humdata.org/api/3/action/package_search"
+CACHE_TTL = int(os.getenv("CACHE_TTL_FOOD_SECURITY", "604800"))
 
 
 class HeiGITAccessibilityPipeline(BaseETLPipeline):
-    """Downloads HeiGIT accessibility indicators from HDX."""
+    """Warms the Redis cache with HeiGIT accessibility dataset metadata from HDX.
+
+    No data is stored in the database — results are cached in Redis.
+    Query metadata is logged to Supabase ``ingestion_logs``.
+    """
 
     def __init__(self, db_url: str) -> None:
         super().__init__(db_url, "HeiGIT Accessibility")
+        self.redis_client = redis.Redis.from_url(
+            os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        )
         self.target_countries = os.getenv("TARGET_COUNTRIES", "KEN,ETH,NGA").split(",")
 
     def extract(self) -> Any:
+        cache_key = "heigit:datasets:heigit accessibility:10:all"
+        cached = self.redis_client.get(cache_key)
+        if cached:
+            logger.debug("Cache hit for HeiGIT accessibility datasets")
+            return json.loads(cached)
+
         logger.info("Searching HDX for HeiGIT accessibility datasets")
         with httpx.Client(timeout=60) as client:
             resp = client.get(
@@ -30,65 +44,24 @@ class HeiGITAccessibilityPipeline(BaseETLPipeline):
                 params={"q": "heigit accessibility", "rows": 10},
             )
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            self.redis_client.setex(cache_key, CACHE_TTL, json.dumps(data))
+            return data
 
     def transform(self, raw_data: Any) -> List[Dict[str, Any]]:
-        records: List[Dict[str, Any]] = []
         result = raw_data.get("result", {}) if isinstance(raw_data, dict) else {}
         datasets = result.get("results", [])
-        for dataset in datasets:
-            for resource in dataset.get("resources", []):
-                records.append(
-                    {
-                        "dataset_name": dataset.get("name", ""),
-                        "resource_url": resource.get("url", ""),
-                        "format": resource.get("format", ""),
-                        "service_type": "health",
-                    }
-                )
-        logger.info("Found %d HeiGIT accessibility resources", len(records))
-        return records
+        return [
+            {
+                "dataset_name": d.get("name", ""),
+                "resource_count": len(d.get("resources", [])),
+            }
+            for d in datasets
+        ]
 
     def load(self, data: List[Dict[str, Any]]) -> Dict[str, int]:
-        if not data:
-            logger.warning("No HeiGIT accessibility records to load")
-            return {"rows_processed": 0, "rows_failed": 0}
-        rows_processed = 0
-        rows_failed = 0
-        with self.SessionLocal() as session:
-            for record in data:
-                try:
-                    for country_code in self.target_countries:
-                        region_row = session.execute(
-                            text(
-                                "SELECT id FROM regions WHERE country_code = :cc "
-                                "AND admin_level = 0 LIMIT 1"
-                            ),
-                            {"cc": country_code},
-                        ).fetchone()
-                        if not region_row:
-                            continue
-                        session.execute(
-                            text(
-                                "INSERT INTO accessibility_scores "
-                                "(id, admin_area_id, service_type) "
-                                "VALUES (:id, :area_id, :service_type) "
-                                "ON CONFLICT DO NOTHING"
-                            ),
-                            {
-                                "id": str(uuid.uuid4()),
-                                "area_id": str(region_row[0]),
-                                "service_type": record["service_type"],
-                            },
-                        )
-                        rows_processed += 1
-                except Exception as exc:
-                    logger.error(
-                        "Failed to insert HeiGIT accessibility record: %s", exc
-                    )
-                    rows_failed += 1
-            session.commit()
-        return {"rows_processed": rows_processed, "rows_failed": rows_failed}
+        """Log cache-warming metadata to Supabase ingestion_logs."""
+        return {"rows_processed": len(data), "rows_failed": 0}
 
 
 if __name__ == "__main__":

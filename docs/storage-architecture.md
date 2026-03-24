@@ -1,60 +1,71 @@
-# Storage Architecture
+# Storage Architecture — Query-First Design
 
-AgriSecure uses a 3-tier storage design.
-
-## Tier 1: Operational Database (PostgreSQL/PostGIS/TimescaleDB)
-
-**Purpose**: Primary transactional store for all platform data.
-
-**Technology**: TimescaleDB (PostgreSQL + TimescaleDB + PostGIS extensions)
-
-**Hosted on**: Docker container / MicroK8s StatefulSet
-
-**Data**:
-- Farmer and farm profiles
-- Market prices (time-series)
-- Weather data (time-series)
-- Food security indicators
-- Risk and vulnerability scores
-- Alerts and notifications
-
-**Why TimescaleDB**: Optimized for time-series data (market prices, weather, rainfall). Provides automatic partitioning, compression, and continuous aggregates for large datasets.
-
-**Why PostGIS**: Enables spatial queries — finding markets near a farmer, regions within a flood zone, accessibility travel times.
+AgriSecure uses a **query-first** approach: external data is **never stored permanently**.
+It is queried on demand and cached temporarily in Redis.
 
 ---
 
-## Tier 2: In-Memory Cache (Redis)
+## What We Store (Supabase — Free Tier PostgreSQL + PostGIS)
 
-**Purpose**: Short-lived cache for frequently accessed or rate-limited API data.
+Only **our own data** lives in Supabase:
 
-**Technology**: Redis 7
+| Table | Description |
+|---|---|
+| `farmers` | Farmer profiles, contact info, location |
+| `farms` | Farm boundaries, crop types, area |
+| `alerts` | Active alerts and notification rules |
+| `regions` | Administrative regions (country/admin1/admin2) |
+| `data_sources` | External API registry |
+| `ingestion_logs` | Audit log of what was queried, when, and with what status |
 
-**Use cases**:
-- Open-Meteo weather API responses (6-hour TTL)
-- API response caching
-- Rate limiting for external APIs
+**Technology**: Supabase free tier — PostgreSQL 15 + PostGIS extension.
+
+**Why Supabase**: Fully managed PostgreSQL with PostGIS, row-level security,
+REST and realtime APIs, dashboard UI, and a generous free tier ($0/month).
 
 ---
 
-## Tier 3: Object Storage (S3-compatible)
+## What We Query On Demand (External APIs → Redis Cache)
 
-**Purpose**: Long-term storage for raw files, raster data, and large datasets.
+External data is **never stored permanently**.  The API fetches it on each
+unique request and caches the result in Redis with a TTL.
 
-**Technology**: Hetzner Object Storage (S3-compatible)
+| Source | Data | Cache TTL |
+|---|---|---|
+| **Open-Meteo** | 7-day weather forecasts, soil moisture | 1 hour |
+| **World Bank RTFP** | Monthly food price estimates | 24 hours |
+| **WFP VAM Data Bridges** | Market-level food prices | 24 hours |
+| **FAOSTAT** | Crop production, food balance sheets | 24 hours |
+| **CHIRPS** | Monthly rainfall file metadata | 24 hours |
+| **FEWS NET** | IPC food security phase classifications | 7 days |
+| **HeiGIT / HDX** | Risk and accessibility datasets | 7 days |
 
-**Use cases**:
-- CHIRPS rainfall TIF files (raw raster downloads)
-- FAOSTAT bulk CSV exports
-- Model artifacts and processed geospatial datasets
-- Backup archives
+---
 
-**Configuration**:
-```bash
-S3_ENDPOINT=https://fsn1.your-objectstorage.com
-S3_BUCKET=agrisecure-data
-S3_ACCESS_KEY=your-access-key
-S3_SECRET_KEY=your-secret-key
+## Caching Strategy (Upstash Redis — Free Tier)
+
+**Technology**: Upstash serverless Redis — pay-per-request, generous free tier ($0/month).
+
+Cache keys follow the pattern:
+```
+{source}:{query_params...}
+```
+
+Examples:
+```
+open_meteo:-1.286389:36.817223:temperature_2m_max,...
+wfp:prices:KEN:wheat:1
+fews_net:ipc:KEN:None:None
+chirps:2025:03:KEN
+heigit:datasets:heigit risk:10:all
+```
+
+TTL is configured per source via environment variables:
+
+```env
+CACHE_TTL_WEATHER=3600        # 1 hour
+CACHE_TTL_PRICES=86400        # 24 hours
+CACHE_TTL_FOOD_SECURITY=604800 # 7 days
 ```
 
 ---
@@ -62,15 +73,46 @@ S3_SECRET_KEY=your-secret-key
 ## Data Flow
 
 ```
-External APIs (World Bank, WFP, FAOSTAT, FEWS NET, CHIRPS, Open-Meteo, HeiGIT)
-       │
-       ▼
-ETL Pipelines (data/pipelines/)
-  ├─ Raw files → Object Storage (S3)
-  ├─ Weather API → Redis cache (6h TTL)
-  └─ Structured data → PostgreSQL/PostGIS/TimescaleDB
-       │
-       ▼
-FastAPI (services/api/)
-  └─ REST endpoints → Client applications
+Client Request
+      │
+      ▼
+FastAPI /api/v1/external/*
+      │
+      ├─ Check Redis cache ──── HIT ──► Return cached data (fast)
+      │
+      └─ MISS
+            │
+            ▼
+      External API (Open-Meteo / WFP / FAOSTAT / FEWS NET / ...)
+            │
+            ▼
+      Cache result in Redis (with TTL)
+            │
+            ▼
+      Return response to client
 ```
+
+---
+
+## Why Query-First?
+
+| Benefit | Detail |
+|---|---|
+| **$0/month** | No storage costs for external data |
+| **Always current** | Data is fetched fresh (within TTL) on every request |
+| **No maintenance** | No ETL pipelines to monitor, no bulk download jobs |
+| **No storage limits** | External APIs manage their own storage |
+| **Graceful degradation** | If an API is down, the cached value is served |
+
+---
+
+## Phase Progression
+
+As AgriSecure scales beyond the free tiers:
+
+| Phase | Database | Cache | Cost |
+|---|---|---|---|
+| **MVP (now)** | Supabase free | Upstash free | $0 |
+| **Growth** | Supabase Pro | Upstash Pay-as-you-go | ~$25/mo |
+| **Scale** | Supabase Enterprise or self-hosted | Redis Cloud | ~$100+/mo |
+| **Self-hosted** | PostgreSQL + PostGIS on Hetzner/Civo | Redis on-cluster | ~$20/mo |
