@@ -1,0 +1,28 @@
+[
+  {"name": "Kenya", "country_code": "KEN", "admin_level": 0},
+  {"name": "Nairobi", "country_code": "KEN", "admin_level": 1, "parent_country": "Kenya"},
+  {"name": "Central", "country_code": "KEN", "admin_level": 1, "parent_country": "Kenya"},
+  {"name": "Coast", "country_code": "KEN", "admin_level": 1, "parent_country": "Kenya"},
+  {"name": "Eastern", "country_code": "KEN", "admin_level": 1, "parent_country": "Kenya"},
+  {"name": "Rift Valley", "country_code": "KEN", "admin_level": 1, "parent_country": "Kenya"},
+  {"name": "Western", "country_code": "KEN", "admin_level": 1, "parent_country": "Kenya"},
+  {"name": "Nyanza", "country_code": "KEN", "admin_level": 1, "parent_country": "Kenya"},
+
+  {"name": "Ethiopia", "country_code": "ETH", "admin_level": 0},
+  {"name": "Oromia", "country_code": "ETH", "admin_level": 1, "parent_country": "Ethiopia"},
+  {"name": "Amhara", "country_code": "ETH", "admin_level": 1, "parent_country": "Ethiopia"},
+  {"name": "Tigray", "country_code": "ETH", "admin_level": 1, "parent_country": "Ethiopia"},
+  {"name": "SNNPR", "country_code": "ETH", "admin_level": 1, "parent_country": "Ethiopia"},
+  {"name": "Somali Region", "country_code": "ETH", "admin_level": 1, "parent_country": "Ethiopia"},
+  {"name": "Afar", "country_code": "ETH", "admin_level": 1, "parent_country": "Ethiopia"},
+  {"name": "Addis Ababa", "country_code": "ETH", "admin_level": 1, "parent_country": "Ethiopia"},
+
+  {"name": "Nigeria", "country_code": "NGA", "admin_level": 0},
+  {"name": "Lagos", "country_code": "NGA", "admin_level": 1, "parent_country": "Nigeria"},
+  {"name": "Kano", "country_code": "NGA", "admin_level": 1, "parent_country": "Nigeria"},
+  {"name": "Rivers", "country_code": "NGA", "admin_level": 1, "parent_country": "Nigeria"},
+  {"name": "Kaduna", "country_code": "NGA", "admin_level": 1, "parent_country": "Nigeria"},
+  {"name": "Ogun", "country_code": "NGA", "admin_level": 1, "parent_country": "Nigeria"},
+  {"name": "Borno", "country_code": "NGA", "admin_level": 1, "parent_country": "Nigeria"},
+  {"name": "FCT Abuja", "country_code": "NGA", "admin_level": 1, "parent_country": "Nigeria"}
+]

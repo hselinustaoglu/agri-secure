@@ -1,0 +1,92 @@
+name: Data Ingestion Pipelines
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+    - cron: "0 3 * * 1"
+    - cron: "0 2 1 * *"
+    - cron: "0 2 1 1,4,7,10 *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  daily-weather:
+    if: github.event.schedule == '0 6 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r data/pipelines/requirements.txt
+      - run: python data/pipelines/open_meteo.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+
+  weekly-fews:
+    if: github.event.schedule == '0 3 * * 1' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r data/pipelines/requirements.txt
+      - run: python data/pipelines/fews_net.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  monthly-prices:
+    if: github.event.schedule == '0 2 1 * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r data/pipelines/requirements.txt
+      - name: Run World Bank RTFP
+        run: python data/pipelines/world_bank_rtfp.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Run WFP Prices
+        run: python data/pipelines/wfp_prices.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Run CHIRPS
+        run: python data/pipelines/chirps.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  quarterly-indicators:
+    if: github.event.schedule == '0 2 1 1,4,7,10 *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r data/pipelines/requirements.txt
+      - name: Run FAOSTAT
+        run: python data/pipelines/faostat.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Run HeiGIT Risk
+        run: python data/pipelines/heigit_risk.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      - name: Run HeiGIT Accessibility
+        run: python data/pipelines/heigit_accessibility.py
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
