@@ -50,7 +50,7 @@ class FEWSNetClient(BaseExternalClient):
             params["period_end"] = period_end
 
         data = await self._get(
-            "https://fdw.fews.net/api/ipcpacket/",
+            f"{self.base_url}/ipcpacket/",
             params=params,
         )
         self._cache_set(cache_key, data)

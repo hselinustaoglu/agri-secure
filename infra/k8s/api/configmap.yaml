@@ -5,11 +5,13 @@ metadata:
   namespace: agri-secure
 data:
   # === Supabase (Free Tier) ===
-  # Override DATABASE_URL via a Secret in production — do NOT store real credentials here.
-  DATABASE_URL: postgresql://postgres.ref:password@aws-0-region.pooler.supabase.com:6543/postgres
-  SUPABASE_URL: https://ref.supabase.co
-  # === Upstash Redis (Free Tier) — override via Secret ===
-  REDIS_URL: redis://default:token@redis.upstash.io:6379
+  # Store real credentials in a Kubernetes Secret, NOT here.
+  # Reference them in the Deployment via envFrom/secretRef instead of this ConfigMap.
+  # Example placeholder only — replace with your actual Supabase project details via Secret.
+  SUPABASE_URL: https://REPLACE_WITH_YOUR_REF.supabase.co
+  # === Upstash Redis (Free Tier) ===
+  # Override REDIS_URL via a Kubernetes Secret in production.
+  REDIS_URL: redis://REPLACE_WITH_UPSTASH_URL
   # === External API base URLs ===
   OPEN_METEO_BASE_URL: https://api.open-meteo.com/v1
   FAOSTAT_BASE_URL: https://fenixservices.fao.org/faostat/api/v1

@@ -166,8 +166,12 @@ async def get_rainfall(
     """Return CHIRPS monthly rainfall file metadata (cached 24 hours)."""
     if year is None or month is None:
         now = datetime.datetime.utcnow()
-        year = year or now.year
-        month = month or (now.month - 1 if now.month > 1 else 12)
+        if month is None:
+            month = now.month - 1 if now.month > 1 else 12
+            if year is None:
+                year = now.year if now.month > 1 else now.year - 1
+        elif year is None:
+            year = now.year
 
     try:
         return await _chirps().get_monthly_stats(

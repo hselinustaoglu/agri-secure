@@ -5,9 +5,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # === Database (Supabase) ===
-    DATABASE_URL: str = (
-        "postgresql://postgres.ref:password@aws-0-region.pooler.supabase.com:6543/postgres"
-    )
+    DATABASE_URL: str = ""
     SUPABASE_URL: str = ""
     SUPABASE_ANON_KEY: str = ""
     SUPABASE_SERVICE_KEY: str = ""
