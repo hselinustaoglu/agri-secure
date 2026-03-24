@@ -1,0 +1,66 @@
+[
+  {
+    "name": "World Bank RTFP",
+    "url": "https://microdata.worldbank.org/index.php/api/catalog/4483",
+    "source_type": "api",
+    "refresh_interval": 2592000,
+    "status": "active",
+    "config_json": {"description": "World Bank Real-Time Food Prices"}
+  },
+  {
+    "name": "WFP Prices",
+    "url": "https://api.hungermapdata.org/api/v2/country/all/marketprice",
+    "source_type": "api",
+    "refresh_interval": 2592000,
+    "status": "active",
+    "config_json": {"description": "WFP HungerMap food market prices"}
+  },
+  {
+    "name": "FAOSTAT",
+    "url": "https://fenixservices.fao.org/faostat/api/v1/en/data/QCL",
+    "source_type": "api",
+    "refresh_interval": 7776000,
+    "status": "active",
+    "config_json": {"description": "FAO crop production statistics"}
+  },
+  {
+    "name": "FEWS NET",
+    "url": "https://fdw.fews.net/api/ipcpacket/",
+    "source_type": "api",
+    "refresh_interval": 604800,
+    "status": "active",
+    "config_json": {"description": "FEWS NET IPC food security phases"}
+  },
+  {
+    "name": "CHIRPS",
+    "url": "https://data.chc.ucsb.edu/products/CHIRPS-2.0/global_monthly/tifs/",
+    "source_type": "file",
+    "refresh_interval": 2592000,
+    "status": "active",
+    "config_json": {"description": "CHIRPS monthly rainfall estimates"}
+  },
+  {
+    "name": "Open-Meteo",
+    "url": "https://api.open-meteo.com/v1/forecast",
+    "source_type": "api",
+    "refresh_interval": 21600,
+    "status": "active",
+    "config_json": {"description": "Open-Meteo weather forecast data"}
+  },
+  {
+    "name": "HeiGIT Risk",
+    "url": "https://data.humdata.org/api/3/action/package_search?q=heigit+risk",
+    "source_type": "api",
+    "refresh_interval": 7776000,
+    "status": "active",
+    "config_json": {"description": "HeiGIT vulnerability and risk indicators"}
+  },
+  {
+    "name": "HeiGIT Accessibility",
+    "url": "https://data.humdata.org/api/3/action/package_search?q=heigit+accessibility",
+    "source_type": "api",
+    "refresh_interval": 7776000,
+    "status": "active",
+    "config_json": {"description": "HeiGIT accessibility to services indicators"}
+  }
+]

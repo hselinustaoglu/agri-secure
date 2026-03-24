@@ -1,0 +1,59 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etl-monthly-world-bank
+  namespace: agri-secure
+spec:
+  schedule: "0 2 1 * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: world-bank-rtfp
+              image: agrisecure-etl:latest
+              command: ["python", "data/pipelines/world_bank_rtfp.py"]
+              envFrom:
+                - configMapRef:
+                    name: api-config
+          restartPolicy: OnFailure
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etl-monthly-wfp
+  namespace: agri-secure
+spec:
+  schedule: "0 2 1 * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: wfp-prices
+              image: agrisecure-etl:latest
+              command: ["python", "data/pipelines/wfp_prices.py"]
+              envFrom:
+                - configMapRef:
+                    name: api-config
+          restartPolicy: OnFailure
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etl-monthly-chirps
+  namespace: agri-secure
+spec:
+  schedule: "0 2 1 * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: chirps
+              image: agrisecure-etl:latest
+              command: ["python", "data/pipelines/chirps.py"]
+              envFrom:
+                - configMapRef:
+                    name: api-config
+          restartPolicy: OnFailure

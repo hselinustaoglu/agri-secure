@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etl-daily-weather
+  namespace: agri-secure
+spec:
+  schedule: "0 6 * * *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: open-meteo
+              image: agrisecure-etl:latest
+              command: ["python", "data/pipelines/open_meteo.py"]
+              envFrom:
+                - configMapRef:
+                    name: api-config
+          restartPolicy: OnFailure

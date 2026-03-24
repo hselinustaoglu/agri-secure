@@ -1,0 +1,19 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etl-weekly-fews
+  namespace: agri-secure
+spec:
+  schedule: "0 3 * * 1"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: fews-net
+              image: agrisecure-etl:latest
+              command: ["python", "data/pipelines/fews_net.py"]
+              envFrom:
+                - configMapRef:
+                    name: api-config
+          restartPolicy: OnFailure

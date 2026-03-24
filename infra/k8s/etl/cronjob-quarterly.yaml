@@ -1,0 +1,59 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etl-quarterly-faostat
+  namespace: agri-secure
+spec:
+  schedule: "0 2 1 1,4,7,10 *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: faostat
+              image: agrisecure-etl:latest
+              command: ["python", "data/pipelines/faostat.py"]
+              envFrom:
+                - configMapRef:
+                    name: api-config
+          restartPolicy: OnFailure
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etl-quarterly-heigit-risk
+  namespace: agri-secure
+spec:
+  schedule: "0 2 1 1,4,7,10 *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: heigit-risk
+              image: agrisecure-etl:latest
+              command: ["python", "data/pipelines/heigit_risk.py"]
+              envFrom:
+                - configMapRef:
+                    name: api-config
+          restartPolicy: OnFailure
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: etl-quarterly-heigit-accessibility
+  namespace: agri-secure
+spec:
+  schedule: "0 2 1 1,4,7,10 *"
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: heigit-accessibility
+              image: agrisecure-etl:latest
+              command: ["python", "data/pipelines/heigit_accessibility.py"]
+              envFrom:
+                - configMapRef:
+                    name: api-config
+          restartPolicy: OnFailure

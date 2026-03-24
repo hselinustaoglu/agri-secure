@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: agrisecure-api
+  namespace: agri-secure
+spec:
+  selector:
+    app: agrisecure-api
+  ports:
+    - port: 8000
+      targetPort: 8000
+  type: ClusterIP

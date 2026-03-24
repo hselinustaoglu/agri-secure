@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agrisecure-api
+  namespace: agri-secure
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: agrisecure-api
+  template:
+    metadata:
+      labels:
+        app: agrisecure-api
+    spec:
+      containers:
+        - name: api
+          image: agrisecure-api:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: api-config
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 10

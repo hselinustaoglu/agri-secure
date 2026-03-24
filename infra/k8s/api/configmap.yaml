@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  namespace: agri-secure
+data:
+  DATABASE_URL: postgresql://agrisecure:changeme@postgres:5432/agrisecure
+  REDIS_URL: redis://redis:6379/0
