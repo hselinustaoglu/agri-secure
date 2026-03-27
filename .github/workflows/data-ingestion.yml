@@ -36,7 +36,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r data/pipelines/requirements.txt
       - name: Warm Open-Meteo cache
-        run: python data/pipelines/open_meteo.py
+        run: python -m data.pipelines.open_meteo
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
@@ -57,7 +57,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r data/pipelines/requirements.txt
       - name: Warm FEWS NET cache
-        run: python data/pipelines/fews_net.py
+        run: python -m data.pipelines.fews_net
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
@@ -78,21 +78,21 @@ jobs:
       - name: Install dependencies
         run: pip install -r data/pipelines/requirements.txt
       - name: Warm World Bank RTFP cache
-        run: python data/pipelines/world_bank_rtfp.py
+        run: python -m data.pipelines.world_bank_rtfp
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
           TARGET_COUNTRIES: ${{ vars.TARGET_COUNTRIES || 'KEN,ETH,NGA' }}
           CACHE_TTL_PRICES: "86400"
       - name: Warm WFP prices cache
-        run: python data/pipelines/wfp_prices.py
+        run: python -m data.pipelines.wfp_prices
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
           TARGET_COUNTRIES: ${{ vars.TARGET_COUNTRIES || 'KEN,ETH,NGA' }}
           CACHE_TTL_PRICES: "86400"
       - name: Warm CHIRPS rainfall cache
-        run: python data/pipelines/chirps.py
+        run: python -m data.pipelines.chirps
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
@@ -113,20 +113,20 @@ jobs:
       - name: Install dependencies
         run: pip install -r data/pipelines/requirements.txt
       - name: Warm FAOSTAT cache
-        run: python data/pipelines/faostat.py
+        run: python -m data.pipelines.faostat
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
           TARGET_COUNTRIES: ${{ vars.TARGET_COUNTRIES || 'KEN,ETH,NGA' }}
           CACHE_TTL_PRICES: "86400"
       - name: Warm HeiGIT Risk cache
-        run: python data/pipelines/heigit_risk.py
+        run: python -m data.pipelines.heigit_risk
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
           CACHE_TTL_FOOD_SECURITY: "604800"
       - name: Warm HeiGIT Accessibility cache
-        run: python data/pipelines/heigit_accessibility.py
+        run: python -m data.pipelines.heigit_accessibility
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           REDIS_URL: ${{ secrets.REDIS_URL }}
